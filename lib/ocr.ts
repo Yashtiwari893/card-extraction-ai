@@ -1,56 +1,59 @@
 export async function extractTextFromImage(imageUrl: string) {
-  const apiKey = process.env.FUTURIXAI_API_KEY;
+  // 1️⃣ API Key ko trim karein (hidden spaces hatane ke liye)
+  const apiKey = process.env.FUTURIXAI_API_KEY?.trim();
   if (!apiKey) {
-    throw new Error('FUTURIXAI_API_KEY is missing');
+    throw new Error('FUTURIXAI_API_KEY is missing in .env');
   }
 
-  // 1️⃣ Download image
+  // 2️⃣ Download image
   const imageRes = await fetch(imageUrl);
   if (!imageRes.ok) {
     throw new Error(`Failed to download image: ${imageRes.status}`);
   }
-  const imageBuffer = await imageRes.arrayBuffer();
+  const arrayBuffer = await imageRes.arrayBuffer();
 
-  // 2️⃣ Prepare multipart form-data (Matching the exact order/logic of your example)
+  // 3️⃣ Prepare FormData
   const formData = new FormData();
 
-  // Appending file FIRST as per example
-  formData.append(
-    'file',
-    new Blob([imageBuffer], { type: 'image/jpeg' }),
-    'card.jpg'
-  );
+  // Example ke mutabik: file pehle, settings baad mein
+  const fileBlob = new Blob([arrayBuffer], { type: 'image/jpeg' });
+  formData.append('file', fileBlob, 'card.jpg');
 
-  // Appending settings SECOND with correct keys
   const settings = {
     languageHints: ['en'],
     includeBoundingBoxes: false
   };
   formData.append('settings', JSON.stringify(settings));
 
-  // 3️⃣ Send to Futurix AI
-  console.log('--- Sending OCR Request to Futurix AI (Matches Example Pattern) ---');
+  // 4️⃣ Send to Futurix AI
+  console.log('Sending request to Futurix AI with length:', arrayBuffer.byteLength);
+
   const ocrRes = await fetch('https://ai.futurixai.com/v1/ocr/process', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
+      // Content-Type yahan manually nahi set karna hai!
     },
     body: formData,
   });
 
   if (!ocrRes.ok) {
     const errorText = await ocrRes.text();
-    console.error('Futurix RAW Error:', errorText);
-    throw new Error(`OCR Failed (${ocrRes.status}): ${errorText}`);
+    console.error('OCR Fatal Error:', {
+      status: ocrRes.status,
+      body: errorText,
+      url: 'https://ai.futurixai.com/v1/ocr/process'
+    });
+    throw new Error(`Futurix Error (${ocrRes.status}): ${errorText}`);
   }
 
   const data = await ocrRes.json();
-  console.log('Futurix Success!');
+  console.log('Futurix AI Success Response received');
 
   const text = data?.text?.trim();
 
   if (!text) {
-    throw new Error('No text extracted from image');
+    throw new Error('Image processed but no text found');
   }
 
   return text;
